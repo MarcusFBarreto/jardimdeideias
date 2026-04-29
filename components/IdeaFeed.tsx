@@ -1,29 +1,53 @@
-import { Search } from "lucide-react";
-import { Idea } from "@/lib/types";
+"use client";
+
+import { Plus, Search } from "lucide-react";
+import { IdeaList } from "@/components/IdeaList";
+import { FeedTab, Idea } from "@/lib/types";
+
+const feedTabs: Array<{ label: string; value: FeedTab }> = [
+  { label: "Em alta", value: "trending" },
+  { label: "Recentes", value: "new" },
+  { label: "Mexidas", value: "evolving" },
+];
 
 type IdeaFeedProps = {
+  activeTab: FeedTab;
   ideas: Idea[];
+  ideaCount: number;
   query: string;
   selectedIdeaId: string | null;
+  onCreateIdea: () => void;
+  onTabChange: (tab: FeedTab) => void;
   onQueryChange: (query: string) => void;
   onSelectIdea: (ideaId: string) => void;
 };
 
 export function IdeaFeed({
+  activeTab,
   ideas,
+  ideaCount,
   query,
   selectedIdeaId,
+  onCreateIdea,
+  onTabChange,
   onQueryChange,
   onSelectIdea,
 }: IdeaFeedProps) {
   return (
-    <section className="panel feed-panel" aria-label="Ideias em destaque">
-      <div className="section-heading">
-        <div>
-          <p className="eyebrow">Feed</p>
-          <h2>Ideias em destaque</h2>
-        </div>
-        <span className="count">{ideas.length}</span>
+    <section className="panel feed-panel" aria-label="Explorar ideias">
+      <div className="feed-tabs" role="tablist" aria-label="Ordenação do feed">
+        {feedTabs.map((tab) => (
+          <button
+            aria-selected={activeTab === tab.value}
+            className={activeTab === tab.value ? "is-active" : ""}
+            key={tab.value}
+            onClick={() => onTabChange(tab.value)}
+            role="tab"
+            type="button"
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       <label className="search-field">
@@ -31,37 +55,22 @@ export function IdeaFeed({
         <input
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="Buscar por título, descrição ou problema"
+          placeholder="Busque por título, resumo ou problema"
           type="search"
         />
       </label>
 
-      <div className="idea-list">
-        {ideas.length === 0 ? (
-          <p className="empty-state">Nenhuma ideia encontrada.</p>
-        ) : (
-          ideas.map((idea) => (
-            <button
-              className={`idea-card ${
-                selectedIdeaId === idea.id ? "is-selected" : ""
-              }`}
-              key={idea.id}
-              onClick={() => onSelectIdea(idea.id)}
-              type="button"
-            >
-              <div className="idea-card-header">
-                <h3>{idea.title}</h3>
-                <span>{idea.score}</span>
-              </div>
-              <p>{idea.description}</p>
-              <div className="meta-row">
-                <span>{idea.supports} apoios</span>
-                <span>{idea.evolutions.length} evoluções</span>
-              </div>
-            </button>
-          ))
-        )}
-      </div>
+      <button className="create-idea-trigger sidebar-create" onClick={onCreateIdea} type="button">
+        <Plus size={18} aria-hidden="true" />
+        Criar ideia
+      </button>
+
+      <p className="sidebar-count">{ideaCount} ideias na tela</p>
+      <IdeaList
+        ideas={ideas}
+        selectedIdeaId={selectedIdeaId}
+        onSelectIdea={onSelectIdea}
+      />
     </section>
   );
 }

@@ -1,19 +1,26 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { NewIdeaInput } from "@/lib/types";
 
 type IdeaFormProps = {
+  initialIdea?: NewIdeaInput;
   onCreate: (idea: NewIdeaInput) => void;
 };
 
-export function IdeaForm({ onCreate }: IdeaFormProps) {
-  const [form, setForm] = useState<NewIdeaInput>({
-    title: "",
-    description: "",
-    problem: "",
-  });
+const emptyIdea: NewIdeaInput = {
+  title: "",
+  description: "",
+  problem: "",
+};
+
+export function IdeaForm({ initialIdea, onCreate }: IdeaFormProps) {
+  const [form, setForm] = useState<NewIdeaInput>(emptyIdea);
+
+  useEffect(() => {
+    if (initialIdea) setForm(initialIdea);
+  }, [initialIdea]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -22,15 +29,15 @@ export function IdeaForm({ onCreate }: IdeaFormProps) {
     }
 
     onCreate(form);
-    setForm({ title: "", description: "", problem: "" });
+    setForm(emptyIdea);
   }
 
   return (
-    <section className="panel form-panel" aria-label="Criar nova ideia">
+    <section className="panel form-panel" aria-label="Nova ideia">
       <div className="section-heading">
         <div>
           <p className="eyebrow">Nova ideia</p>
-          <h2>Plante uma ideia</h2>
+          <h2>Solte a ideia</h2>
         </div>
       </div>
 
@@ -56,13 +63,13 @@ export function IdeaForm({ onCreate }: IdeaFormProps) {
                 description: event.target.value,
               }))
             }
-            placeholder="Explique a proposta de forma breve"
+            placeholder="Explique a proposta em poucas linhas"
             rows={4}
           />
         </label>
 
         <label>
-          Problema
+          Ponto a resolver
           <textarea
             value={form.problem}
             onChange={(event) =>
@@ -71,14 +78,14 @@ export function IdeaForm({ onCreate }: IdeaFormProps) {
                 problem: event.target.value,
               }))
             }
-            placeholder="Qual problema essa ideia resolve?"
+            placeholder="Que problema essa ideia tenta resolver?"
             rows={4}
           />
         </label>
 
         <button className="primary-button" type="submit">
           <Plus size={18} aria-hidden="true" />
-          Criar ideia
+          Colocar no ar
         </button>
       </form>
     </section>

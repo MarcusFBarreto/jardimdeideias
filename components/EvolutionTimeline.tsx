@@ -1,33 +1,45 @@
 import { Evolution } from "@/lib/types";
+import { sortEvolutionsByNewest } from "@/lib/ideaMetrics";
 
 type EvolutionTimelineProps = {
   evolutions: Evolution[];
 };
 
-const typeLabels: Record<Evolution["type"], string> = {
+export const typeLabels: Record<Evolution["type"], string> = {
   melhoria: "Melhoria",
   critica: "Crítica",
   variacao: "Variação",
   aplicacao: "Aplicação",
 };
 
+export const impactLabels: Record<NonNullable<Evolution["impact"]>, string> = {
+  baixo: "Impacto baixo",
+  medio: "Impacto médio",
+  alto: "Impacto alto",
+};
+
 export function EvolutionTimeline({ evolutions }: EvolutionTimelineProps) {
   if (evolutions.length === 0) {
     return (
       <p className="empty-state">
-        Ainda não há evoluções. Adicione a primeira contribuição estruturada.
+        Nada mudou por aqui ainda. Você pode puxar a primeira melhoria.
       </p>
     );
   }
 
   return (
     <ol className="timeline">
-      {evolutions.map((evolution) => (
+      {sortEvolutionsByNewest(evolutions).map((evolution) => (
         <li key={evolution.id}>
           <div className="timeline-marker" aria-hidden="true" />
           <div className="timeline-content">
             <div className="timeline-meta">
               <span>{typeLabels[evolution.type]}</span>
+              {evolution.impact ? (
+                <span className="impact-badge">
+                  {impactLabels[evolution.impact]}
+                </span>
+              ) : null}
               <time dateTime={evolution.createdAt}>
                 {formatDate(evolution.createdAt)}
               </time>

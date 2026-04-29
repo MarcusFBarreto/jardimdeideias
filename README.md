@@ -15,10 +15,18 @@ Acesse `http://localhost:3000`.
 
 - Criar ideia com título, descrição e problema.
 - Ver ideias no feed, ordenadas por score decrescente.
+- Alternar o feed entre `Em alta`, `Novas` e `Em evolução`.
 - Buscar ideias por palavra-chave.
 - Abrir uma ideia para ver detalhes e timeline.
 - Apoiar uma ideia.
-- Adicionar evoluções do tipo melhoria, crítica, variação ou aplicação.
+- Adicionar evoluções do tipo melhoria, crítica, variação ou aplicação, com impacto opcional.
+
+## V2
+
+- Score: `apoios + (2 x evoluções) + bônus recente`.
+- Bônus recente: `2` pontos para ideias criadas nas últimas 48 horas.
+- Estado automático da ideia: `Nova`, `Em evolução` ou `Madura`.
+- Destaque de `Última evolução` no detalhe da ideia.
 
 ## Persistência
 
