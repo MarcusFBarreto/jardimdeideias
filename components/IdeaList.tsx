@@ -6,15 +6,23 @@ import { getIdeaStatus } from "@/lib/ideaMetrics";
 type IdeaListProps = {
   ideas: Idea[];
   selectedIdeaId: string | null;
+  title?: string;
+  description?: string;
   onSelectIdea: (ideaId: string) => void;
 };
 
-export function IdeaList({ ideas, selectedIdeaId, onSelectIdea }: IdeaListProps) {
+export function IdeaList({
+  ideas,
+  selectedIdeaId,
+  title = "Ideias em movimento",
+  description = "Abra uma ideia, entenda o ponto e veja como melhorar.",
+  onSelectIdea,
+}: IdeaListProps) {
   return (
     <section className="related-ideas" aria-label="Ideias para explorar">
       <div className="related-heading">
-        <h2>Ideias em movimento</h2>
-        <p>Abra uma ideia, entenda o ponto e veja como melhorar.</p>
+        <h2>{title}</h2>
+        <p>{description}</p>
       </div>
 
       <div className="idea-list">
