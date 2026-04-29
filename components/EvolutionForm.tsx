@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Send } from "lucide-react";
 import { EvolutionImpact, EvolutionType, NewEvolutionInput } from "@/lib/types";
 
@@ -18,20 +18,28 @@ const impactOptions: Array<{ label: string; value: EvolutionImpact }> = [
 ];
 
 type EvolutionFormProps = {
+  initialType?: EvolutionType;
   onCreate: (evolution: NewEvolutionInput) => void;
 };
 
-export function EvolutionForm({ onCreate }: EvolutionFormProps) {
-  const [type, setType] = useState<EvolutionType>("melhoria");
+export function EvolutionForm({
+  initialType = "melhoria",
+  onCreate,
+}: EvolutionFormProps) {
+  const [type, setType] = useState<EvolutionType>(initialType);
   const [impact, setImpact] = useState<EvolutionImpact | "">("");
   const [content, setContent] = useState("");
+
+  useEffect(() => {
+    setType(initialType);
+  }, [initialType]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!content.trim()) return;
 
     onCreate({ type, content, impact: impact || undefined });
-    setType("melhoria");
+    setType(initialType);
     setImpact("");
     setContent("");
   }
@@ -81,7 +89,7 @@ export function EvolutionForm({ onCreate }: EvolutionFormProps) {
 
       <button className="secondary-button" type="submit">
         <Send size={18} aria-hidden="true" />
-        Enviar melhoria
+        {type === "variacao" ? "Propor variação" : "Enviar melhoria"}
       </button>
     </form>
   );

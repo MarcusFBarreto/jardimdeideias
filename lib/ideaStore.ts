@@ -1,9 +1,10 @@
-import { Idea, NewEvolutionInput, NewIdeaInput } from "@/lib/types";
+import { Idea, NewEvolutionInput, NewIdeaInput, Variation } from "@/lib/types";
 import { calculateIdeaScore } from "@/lib/ideaMetrics";
+import { getLeadingVariation, normalizeIdeaShape } from "@/lib/ideaModel";
 
 const STORAGE_KEY = "jardim-de-ideias";
 const STORAGE_VERSION_KEY = "jardim-de-ideias-versao-seed";
-const CURRENT_SEED_VERSION = "ideias-simuladas-v2";
+const CURRENT_SEED_VERSION = "ideias-simuladas-v3";
 
 const seededIdeas: Idea[] = [
   {
@@ -481,7 +482,7 @@ const seededIdeas: Idea[] = [
   },
 ];
 
-const initialIdeas = seededIdeas.map(recalculateIdeaScore);
+const initialIdeas = seededIdeas.map(normalizeIdeaShape).map(recalculateIdeaScore);
 
 export function loadIdeas(): Idea[] {
   if (typeof window === "undefined") return initialIdeas;
@@ -496,7 +497,7 @@ export function loadIdeas(): Idea[] {
 
   try {
     const parsedIdeas = JSON.parse(storedIdeas) as Idea[];
-    return parsedIdeas.map(recalculateIdeaScore);
+    return parsedIdeas.map(normalizeIdeaShape).map(recalculateIdeaScore);
   } catch {
     saveIdeas(initialIdeas);
     return initialIdeas;
@@ -510,15 +511,27 @@ export function saveIdeas(ideas: Idea[]) {
 }
 
 export function createIdea(input: NewIdeaInput): Idea {
+  const seedTitle = input.title.trim();
+  const leadingVariation: Variation = {
+    id: crypto.randomUUID(),
+    content: input.description.trim(),
+    supports: 0,
+    evolutions: 0,
+    createdAt: new Date().toISOString(),
+    isLeading: true,
+  };
+
   return recalculateIdeaScore({
     id: crypto.randomUUID(),
-    title: input.title.trim(),
-    description: input.description.trim(),
+    title: seedTitle,
+    seedTitle,
+    description: leadingVariation.content,
     problem: input.problem.trim(),
     supports: 0,
     score: 0,
-    createdAt: new Date().toISOString(),
+    createdAt: leadingVariation.createdAt ?? new Date().toISOString(),
     evolutions: [],
+    variations: [leadingVariation],
   });
 }
 
@@ -532,9 +545,49 @@ export function createEvolution(input: NewEvolutionInput) {
   };
 }
 
-export function recalculateIdeaScore(idea: Idea): Idea {
+export function createVariation(input: Pick<Variation, "content" | "title">) {
   return {
-    ...idea,
-    score: calculateIdeaScore(idea),
+    id: crypto.randomUUID(),
+    title: input.title?.trim() || undefined,
+    content: input.content.trim(),
+    supports: 0,
+    evolutions: 0,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export function supportLeadingVariation(idea: Idea): Idea {
+  const normalizedIdea = normalizeIdeaShape(idea);
+  const leadingVariation = getLeadingVariation(normalizedIdea);
+
+  if (!leadingVariation) {
+    return recalculateIdeaScore({ ...normalizedIdea, supports: idea.supports + 1 });
+  }
+
+  return supportVariation(normalizedIdea, leadingVariation.id);
+}
+
+export function supportVariation(idea: Idea, variationId: string): Idea {
+  const normalizedIdea = normalizeIdeaShape(idea);
+
+  return recalculateIdeaScore({
+    ...normalizedIdea,
+    supports: normalizedIdea.supports + 1,
+    variations: normalizedIdea.variations?.map((variation) => ({
+      ...variation,
+      supports:
+        variation.id === variationId
+          ? variation.supports + 1
+          : variation.supports,
+    })),
+  });
+}
+
+export function recalculateIdeaScore(idea: Idea): Idea {
+  const normalizedIdea = normalizeIdeaShape(idea);
+
+  return {
+    ...normalizedIdea,
+    score: calculateIdeaScore(normalizedIdea),
   };
 }

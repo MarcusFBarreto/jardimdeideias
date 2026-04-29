@@ -21,15 +21,30 @@ export type Evolution = {
   createdAt: string;
 };
 
+export type Variation = {
+  id: string;
+  title?: string;
+  content: string;
+  supports: number;
+  evolutions?: number;
+  author?: string;
+  createdAt?: string;
+  isLeading?: boolean;
+};
+
 export type Idea = {
   id: string;
   title: string;
+  seedTitle?: string;
+  category?: string;
+  status?: string;
   description: string;
   problem: string;
   supports: number;
   score: number;
   createdAt: string;
   evolutions: Evolution[];
+  variations?: Variation[];
 };
 
 export type NewIdeaInput = {

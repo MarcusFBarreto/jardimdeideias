@@ -1,9 +1,15 @@
 import { Evolution, Idea, IdeaStatus } from "@/lib/types";
+import { getIdeaSupportCount, getVariationCount } from "@/lib/ideaModel";
 
 const RECENT_BONUS_HOURS = 48;
 
-export function calculateIdeaScore(idea: Pick<Idea, "supports" | "evolutions" | "createdAt">) {
-  return idea.supports + idea.evolutions.length * 2 + getRecentBonus(idea.createdAt);
+export function calculateIdeaScore(idea: Idea) {
+  return (
+    getIdeaSupportCount(idea) +
+    idea.evolutions.length * 2 +
+    Math.max(0, getVariationCount(idea) - 1) +
+    getRecentBonus(idea.createdAt)
+  );
 }
 
 export function getIdeaStatus(idea: Pick<Idea, "evolutions">): IdeaStatus {

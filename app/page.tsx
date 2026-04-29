@@ -8,6 +8,19 @@ import { IdeaForm } from "@/components/IdeaForm";
 import { InspirationPanel } from "@/components/InspirationPanel";
 import { IdeaList } from "@/components/IdeaList";
 import { getLatestEvolution } from "@/lib/ideaMetrics";
+import {
+  getIdeaCategoryLabel,
+  getIdeaSupportCount,
+  getLeadingVariation,
+  getOtherVariations,
+  getSeedTitle,
+  getVariationCount,
+} from "@/lib/ideaModel";
+import {
+  findSimilarIdeas,
+  normalizeIdeaText,
+  SimilarIdea,
+} from "@/lib/ideaSimilarity";
 import { topicToIdeaDraft } from "@/lib/inspirationTopics";
 import { FeedTab, Idea, NewIdeaInput } from "@/lib/types";
 import { useIdeas } from "@/lib/useIdeas";
@@ -22,10 +35,12 @@ const feedTabs: Array<{ label: string; value: FeedTab }> = [
 const MIN_SEARCH_LENGTH = 3;
 
 type SearchableIdea = Idea & {
+  normalizedCategory: string;
   normalizedDescription: string;
   normalizedProblem: string;
   normalizedStatus: string;
   normalizedTitle: string;
+  normalizedVariations: string;
 };
 
 function getEditorialStatus(idea: Idea) {
@@ -34,16 +49,6 @@ function getEditorialStatus(idea: Idea) {
     return "em debate";
   }
   return "em alta";
-}
-
-function normalizeSearchText(text: string) {
-  return text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 function sortIdeas(ideas: Idea[], activeTab: FeedTab) {
@@ -66,15 +71,25 @@ function sortIdeas(ideas: Idea[], activeTab: FeedTab) {
 function getSearchableIdeas(ideas: Idea[]): SearchableIdea[] {
   return ideas.map((idea) => ({
     ...idea,
-    normalizedDescription: normalizeSearchText(idea.description),
-    normalizedProblem: normalizeSearchText(idea.problem),
-    normalizedStatus: normalizeSearchText(getEditorialStatus(idea)),
-    normalizedTitle: normalizeSearchText(idea.title),
+    normalizedCategory: normalizeIdeaText(
+      getIdeaCategoryLabel(idea, getEditorialStatus(idea)),
+    ),
+    normalizedDescription: normalizeIdeaText(
+      `${idea.description} ${getLeadingVariation(idea)?.content ?? ""}`,
+    ),
+    normalizedProblem: normalizeIdeaText(idea.problem),
+    normalizedStatus: normalizeIdeaText(getEditorialStatus(idea)),
+    normalizedTitle: normalizeIdeaText(getSeedTitle(idea)),
+    normalizedVariations: normalizeIdeaText(
+      getOtherVariations(idea)
+        .map((variation) => `${variation.title ?? ""} ${variation.content}`)
+        .join(" "),
+    ),
   }));
 }
 
 function searchIdeas(ideas: Idea[], searchTerm: string) {
-  const normalizedSearch = normalizeSearchText(searchTerm);
+  const normalizedSearch = normalizeIdeaText(searchTerm);
   if (normalizedSearch.length < MIN_SEARCH_LENGTH) return [];
 
   const searchableIdeas = getSearchableIdeas(ideas);
@@ -83,9 +98,11 @@ function searchIdeas(ideas: Idea[], searchTerm: string) {
     ignoreLocation: true,
     keys: [
       { name: "normalizedTitle", weight: 0.48 },
-      { name: "normalizedDescription", weight: 0.24 },
+      { name: "normalizedDescription", weight: 0.22 },
+      { name: "normalizedVariations", weight: 0.18 },
       { name: "normalizedProblem", weight: 0.18 },
-      { name: "normalizedStatus", weight: 0.1 },
+      { name: "normalizedCategory", weight: 0.08 },
+      { name: "normalizedStatus", weight: 0.04 },
     ],
     minMatchCharLength: MIN_SEARCH_LENGTH,
     threshold: 0.38,
@@ -107,6 +124,7 @@ function searchIdeas(ideas: Idea[], searchTerm: string) {
       .some((token) => token.includes(normalizedSearch));
     const isDescriptionMatch =
       result.item.normalizedDescription.includes(normalizedSearch) ||
+      result.item.normalizedVariations.includes(normalizedSearch) ||
       result.item.normalizedProblem.includes(normalizedSearch);
 
     return {
@@ -150,6 +168,7 @@ export default function Home() {
     isLoaded,
     addIdea,
     supportIdea,
+    supportIdeaVariation,
     addEvolution,
     getIdeaById,
   } = useIdeas();
@@ -159,9 +178,13 @@ export default function Home() {
   const [searchMessage, setSearchMessage] = useState("");
   const [activeTab, setActiveTab] = useState<FeedTab>("trending");
   const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null);
+  const [evolutionTargetId, setEvolutionTargetId] = useState<string | null>(null);
   const [ideaDraft, setIdeaDraft] = useState<NewIdeaInput | undefined>();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [pendingIdea, setPendingIdea] = useState<NewIdeaInput | null>(null);
+  const [similarIdeas, setSimilarIdeas] = useState<SimilarIdea[]>([]);
+  const [creationNotice, setCreationNotice] = useState("");
 
   const selectedIdea = selectedIdeaId ? getIdeaById(selectedIdeaId) : null;
 
@@ -185,6 +208,9 @@ export default function Home() {
   const featuredDebate = featuredIdea?.evolutions.find(
     (evolution) => evolution.type === "critica",
   );
+  const featuredLeadingVariation = featuredIdea
+    ? getLeadingVariation(featuredIdea)
+    : null;
   const trendingIdeas = [...ideas]
     .sort((a, b) => b.score - a.score)
     .slice(0, 3);
@@ -196,7 +222,7 @@ export default function Home() {
   const evolvedIdeas = [...ideas]
     .sort((a, b) => b.evolutions.length - a.evolutions.length)
     .slice(0, 3);
-  const canSearch = normalizeSearchText(searchInput).length >= MIN_SEARCH_LENGTH;
+  const canSearch = normalizeIdeaText(searchInput).length >= MIN_SEARCH_LENGTH;
   const hasSuggestions = canSearch && searchSuggestions.length > 0 && !isSearchOpen;
   const searchTerm = submittedSearch.trim();
 
@@ -226,8 +252,15 @@ export default function Home() {
     };
   }, [closeSearch, isSearchOpen]);
 
+  useEffect(() => {
+    if (!creationNotice) return;
+
+    const timeoutId = window.setTimeout(() => setCreationNotice(""), 4200);
+    return () => window.clearTimeout(timeoutId);
+  }, [creationNotice]);
+
   function submitSearch(term = searchInput) {
-    const normalizedTerm = normalizeSearchText(term);
+    const normalizedTerm = normalizeIdeaText(term);
 
     if (normalizedTerm.length < MIN_SEARCH_LENGTH) {
       setSearchMessage("Digite pelo menos 3 caracteres para buscar.");
@@ -239,6 +272,11 @@ export default function Home() {
     setSubmittedSearch(trimmedTerm);
     setSearchMessage("");
     setIsSearchOpen(true);
+  }
+
+  function openIdea(ideaId: string) {
+    setSelectedIdeaId(ideaId);
+    setEvolutionTargetId(null);
   }
 
   function handleSearchInputChange(nextSearchInput: string) {
@@ -261,11 +299,66 @@ export default function Home() {
   }
 
   function handleSelectSearchResult(ideaId: string) {
-    setSelectedIdeaId(ideaId);
+    openIdea(ideaId);
     setIsSearchOpen(false);
     setSubmittedSearch("");
     setSearchInput("");
     setSearchMessage("");
+  }
+
+  function publishIdea(data: NewIdeaInput) {
+    const idea = addIdea(data);
+    setIdeaDraft(undefined);
+    setPendingIdea(null);
+    setSimilarIdeas([]);
+    setIsCreateOpen(false);
+    setSelectedIdeaId(idea.id);
+    setEvolutionTargetId(null);
+    setCreationNotice("Ideia publicada no Jardim.");
+  }
+
+  function handleCreateIdeaSubmit(data: NewIdeaInput) {
+    const matches = findSimilarIdeas(data, ideas, 5);
+
+    if (matches.length === 0) {
+      publishIdea(data);
+      return;
+    }
+
+    setPendingIdea(data);
+    setIdeaDraft(data);
+    setSimilarIdeas(matches);
+  }
+
+  function handlePublishPendingIdea() {
+    if (!pendingIdea) return;
+    publishIdea(pendingIdea);
+  }
+
+  function handleBackToIdeaForm() {
+    if (pendingIdea) setIdeaDraft(pendingIdea);
+    setSimilarIdeas([]);
+  }
+
+  function handleViewSimilarIdea(ideaId: string, shouldEvolve = false) {
+    if (pendingIdea) setIdeaDraft(pendingIdea);
+    setSimilarIdeas([]);
+    setIsCreateOpen(false);
+    setSelectedIdeaId(ideaId);
+    setEvolutionTargetId(shouldEvolve ? ideaId : null);
+  }
+
+  function openCreateIdea(initialIdea?: NewIdeaInput) {
+    setIdeaDraft(initialIdea);
+    setPendingIdea(null);
+    setSimilarIdeas([]);
+    setIsCreateOpen(true);
+  }
+
+  function closeCreateIdea() {
+    setIsCreateOpen(false);
+    setPendingIdea(null);
+    setSimilarIdeas([]);
   }
 
   if (!isLoaded) {
@@ -329,10 +422,10 @@ export default function Home() {
               {searchSuggestions.map((idea) => (
                 <button
                   key={idea.id}
-                  onClick={() => submitSearch(idea.title)}
+                  onClick={() => submitSearch(getSeedTitle(idea))}
                   type="button"
                 >
-                  {idea.title}
+                  {getSeedTitle(idea)}
                 </button>
               ))}
             </div>
@@ -354,8 +447,7 @@ export default function Home() {
           <button
             className="create-idea-trigger hero-create"
             onClick={() => {
-              setIdeaDraft(undefined);
-              setIsCreateOpen(true);
+              openCreateIdea();
             }}
             type="button"
           >
@@ -370,14 +462,19 @@ export default function Home() {
           <div className="featured-main">
             <div className="featured-kicker">
               <span>Ideia em destaque</span>
-              <strong>{getEditorialStatus(featuredIdea)}</strong>
+              <strong>
+                {getIdeaCategoryLabel(featuredIdea, getEditorialStatus(featuredIdea))}
+              </strong>
             </div>
-            <h2>{featuredIdea.title}</h2>
-            <p>{featuredIdea.description}</p>
+            <h2>{getSeedTitle(featuredIdea)}</h2>
+            <div className="leader-preview">
+              <span>Variação líder no momento</span>
+              <p>{featuredLeadingVariation?.content}</p>
+            </div>
             <div className="featured-actions">
               <button
                 className="primary-button"
-                onClick={() => setSelectedIdeaId(featuredIdea.id)}
+                onClick={() => openIdea(featuredIdea.id)}
                 type="button"
               >
                 Abrir ideia
@@ -389,11 +486,15 @@ export default function Home() {
             <div className="featured-stats">
               <article>
                 <span>Apoios</span>
-                <strong>{featuredIdea.supports}</strong>
+                <strong>{getIdeaSupportCount(featuredIdea)}</strong>
               </article>
               <article>
                 <span>Evoluções</span>
                 <strong>{featuredIdea.evolutions.length}</strong>
+              </article>
+              <article>
+                <span>Caminhos</span>
+                <strong>{getVariationCount(featuredIdea)}</strong>
               </article>
             </div>
             {latestFeaturedEvolution ? (
@@ -419,7 +520,7 @@ export default function Home() {
             selectedIdeaId={selectedIdeaId}
             title="Outras ideias em movimento"
             description={`${sortedIdeas.length} ideias na tela, organizadas pelo filtro ativo.`}
-            onSelectIdea={setSelectedIdeaId}
+            onSelectIdea={openIdea}
           />
         </div>
 
@@ -427,17 +528,17 @@ export default function Home() {
           <EditorialList
             title="Ideias em alta"
             ideas={trendingIdeas}
-            onSelectIdea={setSelectedIdeaId}
+            onSelectIdea={openIdea}
           />
           <EditorialList
             title="Novas sementes"
             ideas={newSeeds}
-            onSelectIdea={setSelectedIdeaId}
+            onSelectIdea={openIdea}
           />
           <EditorialList
             title="Mais evoluídas"
             ideas={evolvedIdeas}
-            onSelectIdea={setSelectedIdeaId}
+            onSelectIdea={openIdea}
           />
         </aside>
       </section>
@@ -447,9 +548,9 @@ export default function Home() {
           topics={activeTopics}
           onAddTopic={addManualTopic}
           onUseInspiration={(topic) => {
-            setIdeaDraft(topicToIdeaDraft(topic));
             setSelectedIdeaId(null);
-            setIsCreateOpen(true);
+            setEvolutionTargetId(null);
+            openCreateIdea(topicToIdeaDraft(topic));
           }}
         />
       </section>
@@ -489,9 +590,15 @@ export default function Home() {
           >
             <IdeaDetail
               idea={selectedIdea}
-              onBack={() => setSelectedIdeaId(null)}
+              onBack={() => {
+                setSelectedIdeaId(null);
+                setEvolutionTargetId(null);
+              }}
               onSupport={supportIdea}
+              onSupportVariation={supportIdeaVariation}
               onAddEvolution={addEvolution}
+              startEvolutionOpen={selectedIdea.id === evolutionTargetId}
+              startEvolutionType="variacao"
             />
           </div>
         </div>
@@ -502,27 +609,39 @@ export default function Home() {
           <div
             aria-label="Nova ideia"
             aria-modal="true"
-            className="create-modal"
+            className={`create-modal ${
+              similarIdeas.length > 0 ? "similarity-modal" : ""
+            }`}
             role="dialog"
           >
             <button
               aria-label="Fechar"
               className="modal-close"
-              onClick={() => setIsCreateOpen(false)}
+              onClick={closeCreateIdea}
               type="button"
             >
               <X size={18} aria-hidden="true" />
             </button>
-            <IdeaForm
-              initialIdea={ideaDraft}
-              onCreate={(data) => {
-                const idea = addIdea(data);
-                setIdeaDraft(undefined);
-                setIsCreateOpen(false);
-                setSelectedIdeaId(idea.id);
-              }}
-            />
+            {similarIdeas.length > 0 && pendingIdea ? (
+              <SimilarIdeasPanel
+                similarIdeas={similarIdeas}
+                onBackToEdit={handleBackToIdeaForm}
+                onPublishAnyway={handlePublishPendingIdea}
+                onViewIdea={handleViewSimilarIdea}
+              />
+            ) : (
+              <IdeaForm
+                initialIdea={ideaDraft}
+                onCreate={handleCreateIdeaSubmit}
+              />
+            )}
           </div>
+        </div>
+      ) : null}
+
+      {creationNotice ? (
+        <div className="creation-notice" role="status">
+          {creationNotice}
         </div>
       ) : null}
     </main>
@@ -544,9 +663,9 @@ function EditorialList({
       <div>
         {ideas.map((idea) => (
           <button key={idea.id} onClick={() => onSelectIdea(idea.id)} type="button">
-            <span>{idea.title}</span>
+            <span>{getSeedTitle(idea)}</span>
             <small>
-              {idea.supports} apoios · {idea.evolutions.length} evoluções
+              {getIdeaSupportCount(idea)} apoios · {getVariationCount(idea)} caminhos
             </small>
           </button>
         ))}
@@ -605,14 +724,16 @@ function SearchResultsOverlay({
                 type="button"
               >
                 <div className="idea-card-header">
-                  <h3>{idea.title}</h3>
-                  <span>{getEditorialStatus(idea)}</span>
+                  <h3>{getSeedTitle(idea)}</h3>
+                  <span>Variação líder</span>
                 </div>
-                <p>{idea.description}</p>
+                <p>{getLeadingVariation(idea)?.content}</p>
                 <div className="meta-row">
-                  <span>{idea.supports} apoios</span>
+                  <span>{getIdeaSupportCount(idea)} apoios</span>
                   <span aria-hidden="true">•</span>
                   <span>{idea.evolutions.length} evoluções</span>
+                  <span aria-hidden="true">•</span>
+                  <span>{getVariationCount(idea)} caminhos</span>
                   <span aria-hidden="true">•</span>
                   <span>Score {idea.score}</span>
                 </div>
@@ -635,5 +756,76 @@ function SearchResultsOverlay({
         )}
       </section>
     </div>
+  );
+}
+
+function SimilarIdeasPanel({
+  similarIdeas,
+  onBackToEdit,
+  onPublishAnyway,
+  onViewIdea,
+}: {
+  similarIdeas: SimilarIdea[];
+  onBackToEdit: () => void;
+  onPublishAnyway: () => void;
+  onViewIdea: (ideaId: string, shouldEvolve?: boolean) => void;
+}) {
+  return (
+    <section className="panel similar-ideas-panel" aria-label="Ideias parecidas">
+      <header className="similar-ideas-header">
+        <p className="eyebrow">Antes de publicar</p>
+        <h2>Ideias parecidas já estão crescendo</h2>
+        <p>
+          Sua ideia parece se conectar com outras sementes do Jardim. Talvez
+          valha apoiar, evoluir ou diferenciar melhor sua proposta.
+        </p>
+      </header>
+
+      <div className="similar-ideas-list">
+        {similarIdeas.map(({ idea, level }) => (
+          <article className="similar-idea-card" key={idea.id}>
+            <div className="idea-card-header">
+              <h3>{getSeedTitle(idea)}</h3>
+              <span>{level === "alta" ? "alta similaridade" : "similar"}</span>
+            </div>
+            <p>{getLeadingVariation(idea)?.content}</p>
+            <div className="meta-row">
+              <span>{getIdeaSupportCount(idea)} apoios</span>
+              <span aria-hidden="true">•</span>
+              <span>{idea.evolutions.length} evoluções</span>
+              <span aria-hidden="true">•</span>
+              <span>{getVariationCount(idea)} caminhos possíveis</span>
+              <span aria-hidden="true">•</span>
+              <span>{getEditorialStatus(idea)}</span>
+            </div>
+            <div className="similar-idea-actions">
+              <button
+                className="secondary-button"
+                onClick={() => onViewIdea(idea.id)}
+                type="button"
+              >
+                Ver e apoiar
+              </button>
+              <button
+                className="text-button"
+                onClick={() => onViewIdea(idea.id, true)}
+                type="button"
+              >
+                Evoluir esta ideia
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <footer className="similar-ideas-footer">
+        <button className="primary-button" onClick={onPublishAnyway} type="button">
+          Publicar mesmo assim
+        </button>
+        <button className="secondary-button" onClick={onBackToEdit} type="button">
+          Voltar e editar
+        </button>
+      </footer>
+    </section>
   );
 }

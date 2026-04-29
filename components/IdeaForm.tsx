@@ -36,14 +36,14 @@ export function IdeaForm({ initialIdea, onCreate }: IdeaFormProps) {
     <section className="panel form-panel" aria-label="Nova ideia">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Nova ideia</p>
+          <p className="eyebrow">Nova semente</p>
           <h2>Solte a ideia</h2>
         </div>
       </div>
 
       <form className="stacked-form" onSubmit={handleSubmit}>
         <label>
-          Título
+          Ideia semente
           <input
             value={form.title}
             onChange={(event) =>
@@ -54,7 +54,7 @@ export function IdeaForm({ initialIdea, onCreate }: IdeaFormProps) {
         </label>
 
         <label>
-          Descrição
+          Variação inicial
           <textarea
             value={form.description}
             onChange={(event) =>
@@ -63,7 +63,7 @@ export function IdeaForm({ initialIdea, onCreate }: IdeaFormProps) {
                 description: event.target.value,
               }))
             }
-            placeholder="Explique a proposta em poucas linhas"
+            placeholder="Descreva a primeira direção possível para essa semente"
             rows={4}
           />
         </label>

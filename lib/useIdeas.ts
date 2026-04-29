@@ -4,9 +4,12 @@ import { useEffect, useState } from "react";
 import {
   createEvolution,
   createIdea,
+  createVariation,
   loadIdeas,
   recalculateIdeaScore,
   saveIdeas,
+  supportLeadingVariation,
+  supportVariation,
 } from "@/lib/ideaStore";
 import { Idea, NewEvolutionInput, NewIdeaInput } from "@/lib/types";
 
@@ -32,9 +35,15 @@ export function useIdeas() {
   function supportIdea(ideaId: string) {
     setIdeas((currentIdeas) =>
       currentIdeas.map((idea) =>
-        idea.id === ideaId
-          ? recalculateIdeaScore({ ...idea, supports: idea.supports + 1 })
-          : idea,
+        idea.id === ideaId ? supportLeadingVariation(idea) : idea,
+      ),
+    );
+  }
+
+  function supportIdeaVariation(ideaId: string, variationId: string) {
+    setIdeas((currentIdeas) =>
+      currentIdeas.map((idea) =>
+        idea.id === ideaId ? supportVariation(idea, variationId) : idea,
       ),
     );
   }
@@ -47,6 +56,10 @@ export function useIdeas() {
           ? recalculateIdeaScore({
               ...idea,
               evolutions: [evolution, ...idea.evolutions],
+              variations:
+                input.type === "variacao"
+                  ? [createVariation({ content: input.content }), ...(idea.variations ?? [])]
+                  : idea.variations,
             })
           : idea,
       ),
@@ -62,6 +75,7 @@ export function useIdeas() {
     isLoaded,
     addIdea,
     supportIdea,
+    supportIdeaVariation,
     addEvolution,
     getIdeaById,
   };
